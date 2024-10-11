@@ -88,7 +88,6 @@ required arguments:
                         Path to the Planetscope scenes directory, e.g., .../psscene4band_basic_analytic_udm2/files/201908_PSS4 (default: None)
   --in_ref_dem IN_REF_DEM
                         Path to the reference DEM (e.g., Copernicus Open DEM) in TIF format. (default: None)
-(planet4stereo) (base) mela@Desktop-Mela:~/git/jupyter$ 
 ```
 
 
