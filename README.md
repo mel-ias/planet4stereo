@@ -52,53 +52,43 @@ which are separated into user, expert and debug settings,
 - Debug settings are used to switch off individual process steps for debugging reasons. Expert and debug settings do not necessarily have to be adjusted. 
 
 ```
-usage: planet4stereo.py [-h] --working_dir WORKING_DIR --job_name JOB_NAME --in_pss_img_dir IN_PSS_IMG_DIR --in_ref_dem IN_REF_DEM --ref_dem_geoid REF_DEM_GEOID --ref_dem_geoid_model REF_DEM_GEOID_MODEL --mask_unstable_areas MASK_UNSTABLE_AREAS
-                        --in_exclusion_mask IN_EXCLUSION_MASK --in_compare_mask IN_COMPARE_MASK [--dem_res DEM_RES] [--pss_band PSS_BAND] [--ortho ORTHO] [--elevation_tolerance_from_dem ELEVATION_TOLERANCE_FROM_DEM]
-                        [--min_convergence_angle MIN_CONVERGENCE_ANGLE] [--min_overlap_percent MIN_OVERLAP_PERCENT] [--do_bba DO_BBA] [--do_stereo DO_STEREO] [--do_pc_alignment DO_PC_ALIGNMENT] [--do_export_las DO_EXPORT_LAS] [--do_dem DO_DEM]
-                        [--do_validation DO_VALIDATION]
+usage: planet4stereo.py [-h] --working_dir WORKING_DIR --in_pss_img_dir IN_PSS_IMG_DIR --in_ref_dem IN_REF_DEM [--in_exclusion_mask IN_EXCLUSION_MASK] [--ref_dem_geoid_model REF_DEM_GEOID_MODEL] [--dem_res DEM_RES] [--pss_band PSS_BAND] [--no_ortho] [--elevation_tolerance ELEVATION_TOLERANCE]
+                        [--min_convergence_angle MIN_CONVERGENCE_ANGLE] [--min_overlap_percent MIN_OVERLAP_PERCENT] [--subpx_kernel SUBPX_KERNEL] [--corr_kernel CORR_KERNEL] [--no_bba] [--no_stereo] [--no_pc_alignment] [--no_dem]
 
-Planet4Stereo: a small ASP-based pipeline to generate medium-resolution DEMs from multi-temporal Planetscope data
+planet4stereo: A small ASP-based pipeline to generate medium-resolution DEMs from multi-temporal Planetscope data
 
 optional arguments:
   -h, --help            show this help message and exit
-  --dem_res DEM_RES     set output GSD of the DEM (in meters), default: dem_res: None, i.e. the median GSD of the input images is used for dem_gsd (default: None)
-  --pss_band PSS_BAND   ASP works with 1ch/3ch images. Recommended to use 1ch NIR (B4) for most contrast in saturated areas, e.g. snow-covered areas (default: 4)
-  --ortho ORTHO         orthorectify input images using reference DEM (may improve correlation in stereo matching) (default: True)
-  --elevation_tolerance_from_dem ELEVATION_TOLERANCE_FROM_DEM
-                        calculate elevation limit range from reference DEM (max/min DEM heights +/- tolerance value) to get rid of coarse outlier (default: 500.0)
+  --in_exclusion_mask IN_EXCLUSION_MASK
+                        Path to a shapefile masking unstable areas (e.g., glaciers) for point cloud alignment. (default: None)
+  --ref_dem_geoid_model REF_DEM_GEOID_MODEL
+                        Specify a geoid model if the reference DEM uses geoid heights (e.g., EGM96 for SRTM). (default: None)
+  --dem_res DEM_RES     Set the output resolution of the DEM (in meters). If not specified, the median GSD of the input images is used. (default: None)
+  --pss_band PSS_BAND   Band selection for ASP (1ch or 3ch images). Recommended: NIR (B4) for high contrast in saturated areas (e.g., snow). (default: 4)
+  --no_ortho            Disable orthorectification before stereo reconstruction (not recommended). (default: False)
+  --elevation_tolerance ELEVATION_TOLERANCE
+                        Elevation tolerance for filtering out coarse outliers in the DEM. (default: 500.0)
   --min_convergence_angle MIN_CONVERGENCE_ANGLE
-                        minimum convergence angle between two PSS images (measured from PSS centers). Values higher than 0° are recommened for scene preselection (see by Huang et al., 2022) (default: 4.0)
+                        Minimum convergence angle between two PSS images. (default: 4.0)
   --min_overlap_percent MIN_OVERLAP_PERCENT
-                        minimum overlap between two PSS images (0.0-1.0 = 0-100%) (default: 0.1)
-  --do_bba DO_BBA       run ASPs bundle block adjustment before stereo (default: True)
-  --do_stereo DO_STEREO
-                        run ASPs pairwise stereo reconstruction (default: True)
-  --do_pc_alignment DO_PC_ALIGNMENT
-                        run individual pc alignment to a reference DEM (default: True)
-  --do_export_las DO_EXPORT_LAS
-                        export LAS point cloud (default: True)
-  --do_dem DO_DEM       DEM rasterization (default: True)
-  --do_validation DO_VALIDATION
-                        perfom DoD analyses based on reference DEM in stable areas for error assessment (default: True)
+                        Minimum overlap percentage between two PSS images (0.0–1.0 = 0–100%). (default: 0.1)
+  --subpx_kernel SUBPX_KERNEL
+                        Subpixel kernel size (use larger values for Bayes EM or low-texture images). (default: 35)
+  --corr_kernel CORR_KERNEL
+                        Correlation kernel size (odd value, 3-9 for SGM or MGM methods). (default: 7)
+  --no_bba              Disable bundle block adjustment (BBA) before stereo. (default: False)
+  --no_stereo           Disable stereo reconstruction. (default: False)
+  --no_pc_alignment     Disable point cloud alignment to the reference DEM. (default: False)
+  --no_dem              Disable DEM rasterization. (default: False)
 
 required arguments:
   --working_dir WORKING_DIR
-                        specify working directory (default: None)
-  --job_name JOB_NAME   specify a job name (default: None)
+                        Specify the working directory. (default: None)
   --in_pss_img_dir IN_PSS_IMG_DIR
-                        path to planetscope scenes (pss) directory, e.g. .../psscene4band_basic_analytic_udm2/files/201908_PSS4 (default: None)
+                        Path to the Planetscope scenes directory, e.g., .../psscene4band_basic_analytic_udm2/files/201908_PSS4 (default: None)
   --in_ref_dem IN_REF_DEM
-                        path to reference DEM, e.g. Copernicus Open DEM (GSD 30m) in TIF format (default: None)
-  --ref_dem_geoid REF_DEM_GEOID
-                        set true if reference DEM has geoid heights (default: None)
-  --ref_dem_geoid_model REF_DEM_GEOID_MODEL
-                        specify geoid_model if ref_dem_geoid = True, e.g EGM96 for SRTM, EGM2008 for Copernicus Open DEM (default: None)
-  --mask_unstable_areas MASK_UNSTABLE_AREAS
-                        set true if reference DEM has unstable areas to be exluded when aligning point clouds (default: None)
-  --in_exclusion_mask IN_EXCLUSION_MASK
-                        path to shape file masking areas to exclude (unstable) in the reference DEM data, e.g. RGI v6 for glaciers (default: None)
-  --in_compare_mask IN_COMPARE_MASK
-                        path to shape file masking areas to be used for comparision in/with the reference DEM (optional, stable areas recommended) (default: None)
+                        Path to the reference DEM (e.g., Copernicus Open DEM) in TIF format. (default: None)
+(planet4stereo) (base) mela@Desktop-Mela:~/git/jupyter$ 
 ```
 
 
