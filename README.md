@@ -1,4 +1,4 @@
-# planetstereo
+# Planet4Stereo
 
 Planet4Stereo was developed to provide a fully open access SFM-MVS pipeline to generate 3D digital elevation models (DEM) from multi-temporal Planetscope imagery. 
 Planetscope images are monoscopic and thus, do not provide in-house options for photogrammetric 3D stereo reconstruction. However, with more than 200 active nano satellites operating in very close sun-synchronous orbits, 
@@ -24,7 +24,7 @@ conda activate planet4stereo
 2. install packages for geo data processing. Note, the order of installation is important and should not be changed to avoid conflicts
 ```
 conda install gdal
-conda install geopandas #includes pandas package + shapely package
+conda install geopandas
 conda install geojson
 conda install rasterio
 ```
@@ -34,7 +34,6 @@ conda install rasterio
 conda install psutil
 conda install progressbar 
 conda install p-tqdm 
-conda install ipykernel 
 ```
 
 4. download and install ASP version 3.3.0 (stable) from the official github repo and follow the installation instructions for your OS
@@ -89,7 +88,6 @@ required arguments:
   --in_ref_dem IN_REF_DEM
                         Path to the reference DEM (e.g., Copernicus Open DEM) in TIF format. (default: None)
 ```
-
 
 
 ## Citation

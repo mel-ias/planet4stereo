@@ -133,7 +133,7 @@ def read_acquisition_params_from_meta(wd_img_dir, path_metadata_xml):
                 The orbit direction of the satellite (e.g., "ascending" or "descending").
     """
 
-    # Parse the XML file and retrieve the root element
+    # Parse the XML file and retrieve the root element and meta data
     rootElement = ET.parse(path_metadata_xml).getroot()
     # Extract sensor resolution from metadata
     sensor_resolution = float(rootElement.findtext(".//{*}resolution"))  
