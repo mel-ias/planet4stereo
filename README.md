@@ -12,7 +12,7 @@ The pipeline provided is intended to enable geoscientists to generate high-resol
 
 ## Getting started // Installation // Dependencies
 
-The entire pipeline is implemented in Python. It requires some common Python libraries for process handling and geo data processing as well as the AMES Stereo Pipeline (ASP) toolbox, version 3.3.0. 
+The entire pipeline is implemented in Python. It requires some common Python libraries for process handling and geo data processing as well as the AMES Stereo Pipeline (ASP) toolbox, version 3.4.0. 
 We advice to use a conda environment to manage the necessary python libraries, which should be set up as follows:
 
 1. create a new conda environment 'planet4stereo' using python 3.9
@@ -36,7 +36,7 @@ conda install progressbar
 conda install p-tqdm 
 ```
 
-4. download and install ASP version 3.3.0 (stable) from the official github repo and follow the installation instructions for your OS
+4. download and install ASP version 3.4.0 (stable) from the official github repo and follow the installation instructions for your OS
 - link to official github repo: https://github.com/NeoGeographyToolkit/StereoPipeline/releases 
 - follow the install instructions: https://stereopipeline.readthedocs.io/en/latest/installation.html#installation 
 - Note, do not forget to set a permanent path to the binaries via ```export PATH=${PATH}:/path/to/StereoPipeline/bin"```
