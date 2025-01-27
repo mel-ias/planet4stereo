@@ -19,6 +19,7 @@ import xml.etree.ElementTree as ET
 # GIS libraries
 from osgeo import gdal, osr
 import rasterio
+from rasterio.warp import calculate_default_transform, reproject, Resampling
 import geopandas as gpd
 from shapely.geometry import Polygon
 
@@ -75,8 +76,7 @@ def getparser():
     ## OPTIONAL USER SETTINGS ##
      # Optional settings provided by the user to fine-tune the pipeline.
     parser.add_argument('--in_exclusion_mask', help='Path to a shapefile masking unstable areas (e.g., glaciers) for point cloud alignment.', default=None)
-    parser.add_argument('--ref_dem_geoid_model', help='Specify a geoid model if the reference DEM uses geoid heights (e.g., EGM96 for SRTM).', default=None)
-    parser.add_argument('--dem_res', help='Set the output resolution of the DEM (in meters). If not specified, the median GSD of the input images is used.', default=None, type=float)
+    parser.add_argument('--ref_dem_geoid_model', help='Specify a geoid model if the reference DEM uses geoid heights (e.g., EGM96 for SRTM, EGM2008 for GLO-30).', default=None)
    
     ## OPTIONAL EXPERT SETTINGS ##
     # Advanced settings for experts to tweak stereo pipeline processing.
@@ -96,6 +96,83 @@ def getparser():
     parser.add_argument('--no_dem', help='Disable DEM rasterization.', action='store_true')
     
     return parser
+
+
+def copy_shapefile_from_shp(shp_file_path, target_folder):
+    """
+    Copies a shape file based on the absolute path of *.shp
+
+    Parameters:
+        shp_file_path : str
+            Absolute path to *.shp file.
+        target_folder : str
+            Target folder to which the shapefile is to be copied.
+    """
+    # make sure that the target dir exists
+    os.makedirs(target_folder, exist_ok=True)
+
+    # extract base name and dir of the *.shp file
+    source_folder = os.path.dirname(shp_file_path)
+    shapefile_name = os.path.splitext(os.path.basename(shp_file_path))[0]
+
+    # pattern for all files related to the shape file
+    pattern = os.path.join(source_folder, f"{shapefile_name}.*")
+    # find all files that are related to the shape file and need to be copied to the working dir
+    files_to_copy = glob.glob(pattern)
+    if not files_to_copy:
+        print(f"No file found belonging to '{shp_file_path}'. Return.")
+        return
+
+    # copy to target dir
+    for file in files_to_copy:
+        target_file = os.path.join(target_folder, os.path.basename(file))
+        if os.path.exists(target_file):
+            print(f"skipped: {file} already exists")
+        else:
+            shutil.copy(file, target_folder)
+            print(f"copied: {file} -> {target_folder}")
+    print(f"Shapefile '{shapefile_name}' successfully copied to '{target_folder}'.")
+
+
+
+
+
+def reproject_raster(input_path, output_path, target_crs):
+    """
+    Reproject a raster file to a new CRS.
+
+    :param input_path: Path to the input raster file.
+    :param output_path: Path to the output raster file.
+    :param target_crs: The target CRS (e.g., 'EPSG:32643').
+    """
+    with rasterio.open(input_path) as src:
+        # Calculate the transform and new dimensions
+        transform, width, height = calculate_default_transform(
+            src.crs, target_crs, src.width, src.height, *src.bounds
+        )
+        # Define the metadata for the output file
+        kwargs = src.meta.copy()
+        kwargs.update({
+            'crs': target_crs,
+            'transform': transform,
+            'width': width,
+            'height': height
+        })
+        
+        # Reproject and save the new file
+        with rasterio.open(output_path, 'w', **kwargs) as dst:
+            for i in range(1, src.count + 1):  # Loop over all bands
+                reproject(
+                    source=rasterio.band(src, i),
+                    destination=rasterio.band(dst, i),
+                    src_transform=src.transform,
+                    src_crs=src.crs,
+                    dst_transform=transform,
+                    dst_crs=target_crs,
+                    resampling=Resampling.cubic
+                )
+
+
 
 def read_acquisition_params_from_meta(wd_img_dir, path_metadata_xml):
     """
@@ -178,7 +255,7 @@ def read_acquisition_params_from_meta(wd_img_dir, path_metadata_xml):
     return sensor_resolution, incidence_angle, azimuth_angle, spacecraft_viewangle, id, center_pos_lat, center_pos_lon, illu_elev, illu_azi, orbit
 
 # BBA function
-def perform_bba(wd_ba_dir, wd_ba_dir_prefix, wd_ref_dem, elevation_tolerance, overlap_stereo_txt, wd_imgs_paths_list):
+def perform_bba(wd_ba_dir, wd_ba_dir_prefix, wd_ref_dem, elevation_tolerance, overlap_stereo_txt, wd_imgs_paths_list, overlap_stereo_pkl):
     """
     Perform Bundle Block Adjustment (BBA) to stabilize the image block from Planetscope Scenes (PSS) images.
 
@@ -234,6 +311,32 @@ def perform_bba(wd_ba_dir, wd_ba_dir_prefix, wd_ref_dem, elevation_tolerance, ov
         print("BBA complete!")
     else:
         print("BBA already done")
+
+
+    # read final residual stats
+    file1_path = wd_ba_dir + "/run-final_residuals_stats.txt"
+    df_file1 = pd.read_csv(file1_path, sep=',', skipinitialspace=True, names=['Image', 'mean', 'median', 'count'])
+
+    # filt out images less than min_ip matches
+    min_ip = 30 # according to asp doc a senseful min number matches between two images; if images have less number of matches, they are like non-well algined
+    df_file1['count'] = pd.to_numeric(df_file1['count'], errors='coerce')
+    images_with_low_count = set(df_file1[df_file1['count'] < min_ip]['Image'])
+
+    # read pkl and remove image pairs containing non well-aligned images 
+    df_file2 = pd.read_pickle(overlap_stereo_pkl)
+    df_file2_filtered = df_file2[
+        ~df_file2['img1'].isin(images_with_low_count) & 
+        ~df_file2['img2'].isin(images_with_low_count)
+    ]
+
+    # update pkl
+    df_file2_filtered.to_pickle(overlap_stereo_pkl)
+    print(f"Successfully updated {overlap_stereo_pkl}.")
+
+
+  
+    
+
 
 # Stereo processing function
 def perform_stereo(ortho, wd_imgs_paths_list, wd_ba_dir_prefix, wd_ref_dem, overlap_stereo_pkl, wd_stereo_dir, subpx_kernel, corr_kernel):
@@ -413,7 +516,7 @@ def align_point_clouds(pc_list, ref_dem):
         print(f"PC align: running job {i+1} of {len(job_list_align)}")
         sub.run_cmd('pc_align', job)
 
-def generate_dems(pc_list, dem_res, epsg_code, ortho_suffix = "run-L.tif", dem_name = "run-DEM.tif", ortho = True):
+def generate_dems(pc_list, epsg_code, ortho_suffix = "run-L.tif", dem_name = "run-DEM.tif", ortho = True):
     """
     Converts a list of point clouds to Digital Elevation Models (DEMs).
 
@@ -424,8 +527,6 @@ def generate_dems(pc_list, dem_res, epsg_code, ortho_suffix = "run-L.tif", dem_n
     Parameters:
         pc_list (list): 
             List of paths to the point cloud files.
-        dem_res (float): 
-            Output DEM resolution in meters.
         epsg_code (str): 
             EPSG code for the target coordinate reference system (CRS).
         ortho_suffix (str, optional): 
@@ -438,7 +539,6 @@ def generate_dems(pc_list, dem_res, epsg_code, ortho_suffix = "run-L.tif", dem_n
 
     # Define standard point2dem options for DEM generation
     point2dem_opts = [
-        '--tr', str(dem_res), # Set DEM resolution
         '--t_srs', epsg_code, # Set target coordinate system
         '--errorimage', # Generate an error image for the DEM
         '--remove-outliers-params', '75.0', '3.0', # Outlier removal settings
@@ -586,7 +686,6 @@ def main(args):
     ref_dem_geoid = True if ref_dem_geoid_model else False
     in_exclusion_mask = args.in_exclusion_mask
     mask_unstable_areas = True if in_exclusion_mask else False
-    dem_res = args.dem_res
     
     # Expert settings
     pss_band = args.pss_band
@@ -621,7 +720,8 @@ def main(args):
     # Define paths to working and output files
     wd_ref_dem = os.path.join(wd_ref_dem_dir, os.path.basename(in_ref_dem))  # Working copy of in_ref_dem
     if args.in_exclusion_mask:
-        wd_exclusion_mask = os.path.join(wd_shp_dir, os.path.basename(in_exclusion_mask))  # Working copy of exclusion mask
+        wd_exclusion_mask = os.path.join(wd_shp_dir, os.path.basename(in_exclusion_mask)) 
+        copy_shapefile_from_shp(in_exclusion_mask, wd_shp_dir)  # create working copy of exclusion mask
     out_img_pkl = os.path.join(wd, 'img_df.pkl')
     overlap_full_txt = os.path.join(wd, 'overlap.txt')
     overlap_full_pkl = os.path.splitext(overlap_full_txt)[0] + '_with_overlap_perc.pkl'
@@ -691,8 +791,6 @@ def main(args):
     # Compute the median GSD (Ground Sampling Distance) of the input images
     median_gsd = round(img_df['gsd'].median(), 1)  # Round to one decimal place
     print('Median GSD:', np.median(median_gsd))
-    dem_res = dem_res if dem_res else (2 * median_gsd)  # Final DEM resolution based on Nyquist-Shannon criterion
-    print('Output DEM resolution:', dem_res)
 
 
     ################################
@@ -728,28 +826,24 @@ def main(args):
     else:
         print("PSS image pairs already computed.")
 
-    # Calculate UTM zone / EPSG code to work with cartesian, projected coordinates (projected CRS).
-    # Details on EPSG code calculation can be found in the rpcm geo package:
-    # https://github.com/centreborelli/rpcm/blob/master/rpcm/geo.py
-    gdf = gpd.read_file(out_bound_fn)
-    clon, clat = [gdf.centroid.x.values, gdf.centroid.y.values]
-    zone = int((clon + 180) // 6 + 1)
-    const = 32600 if clat > 0 else 32700  # EPSG for UTM in Northern and Southern Hemisphere
-    epsg_code = f'EPSG:{const + zone}'
-    epsg_code_nr = const + zone
-    print(f"Detected UTM zone: {epsg_code}")
 
-    # Retrieve CRS from the reference DEM and convert to projected CRS if not equal
+    # work with geographic coordinates (datum horizontal / vertical WGS84) only
+    epsg_code = 'epsg:4326'
+    epsg_code_nr = 4326
+    
+    # check if Retrieve CRS from the reference DEM and convert to projected CRS if not equal
     d = gdal.Open(wd_ref_dem)
     proj = osr.SpatialReference(wkt=d.GetProjection())
     epsg_refdem = proj.GetAttrValue('AUTHORITY', 1)
     epsg_code_refdem = f'EPSG:{epsg_refdem}'
-    if epsg_code != epsg_code_refdem:
-        if not os.path.exists(wd_ref_dem + '_utm.tif'):
+
+    if epsg_code.casefold() != epsg_code_refdem.casefold():
+        print ("RefDEM has a different datum than WGS84: ", epsg_code_refdem, ", this requires conversion")
+        if not os.path.exists(wd_ref_dem + '_4326.tif'):
             # Convert reference DEM to UTM by EPSG code
-            sub.run_cmd('gdalwarp', ['-t_srs', epsg_code, '-r', 'cubic', wd_ref_dem, wd_ref_dem + "_utm.tif"])
-        wd_ref_dem = wd_ref_dem + "_utm.tif"
-        print('Path to reference DEM (ellipsoidal, UTM):', wd_ref_dem)
+            reproject_raster(wd_ref_dem, wd_ref_dem + "_4326.tif", epsg_code)
+        wd_ref_dem = wd_ref_dem + "_4326.tif"
+    print('Path to reference DEM:', wd_ref_dem)
 
     # Apply exclusion mask to the reference DEM
     wd_ref_dem_masked = os.path.splitext(wd_ref_dem)[0] + "_masked_exclusion.tif"
@@ -770,16 +864,15 @@ def main(args):
         if not os.path.exists(wd_ref_dem_masked):  # Check if masked DEM already exists
             print('Clipping reference DEM (removing unstable areas). This may take a while...')
             rproc.clip_raster_by_shapefile(wd_exclusion_mask, wd_ref_dem, wd_ref_dem_masked, crop=False, invert=True)
-
-        print('Path to exclusion mask:', wd_exclusion_mask)
-        print('Path to masked reference DEM (ellipsoidal, UTM):', wd_ref_dem_masked)
+    
+        print('Path to masked reference DEM:', wd_ref_dem_masked)
 
 
     # Processing Phase
     # 1. BBA
     # 2. Stereo (pair-wise)
     if do_bba:
-        perform_bba(wd_ba_dir, wd_ba_dir_prefix, wd_ref_dem, elevation_tolerance, overlap_stereo_txt, wd_imgs_paths_list)
+        perform_bba(wd_ba_dir, wd_ba_dir_prefix, wd_ref_dem, elevation_tolerance, overlap_stereo_txt, wd_imgs_paths_list, overlap_stereo_pkl)
     
     if do_stereo:
         perform_stereo(ortho, wd_imgs_paths_list, wd_ba_dir_prefix, wd_ref_dem, overlap_stereo_pkl, wd_stereo_dir, subpx_kernel, corr_kernel)
@@ -799,7 +892,7 @@ def main(args):
         if do_dem:
             # Generate DEMs from aligned point clouds
             pc_list = sorted(glob.glob(os.path.join(wd_stereo_dir, '**', 'run-PC-trans_source.tif'), recursive=True))
-            generate_dems(pc_list, dem_res, epsg_code, dem_name = "run-PC-trans_source-DEM.tif")
+            generate_dems(pc_list, epsg_code, dem_name = "run-PC-trans_source-DEM.tif")
 
             # Create mosaics and hillshade
             # get list of appropriate files in the structure run-PC-trans_source-DEM.tif
@@ -816,7 +909,7 @@ def main(args):
         if do_dem:
             # Generate DEMs from point clouds
             pc_list = sorted(glob.glob(os.path.join(wd_stereo_dir, '**', 'run-PC.tif'), recursive=True))
-            generate_dems(pc_list, dem_res, epsg_code, dem_name = "run-DEM.tif")
+            generate_dems(pc_list, epsg_code, dem_name = "run-DEM.tif")
 
             # Create mosaics and hillshade
             # get list of appropriate files in the structure run-DEM.tif
@@ -834,7 +927,7 @@ def main(args):
                 align_point_clouds([out_dem_aligned_mosaic], wd_ref_dem_masked if mask_unstable_areas else wd_ref_dem) # returns PC-file
 
             # Regenerate DEM and hillshade for aligned point cloud
-            generate_dems([dem_mosaic_aligned], dem_res, epsg_code, dem_name = os.path.splitext(os.path.basename(out_dem_aligned_mosaic))[0] +"-trans_source-DEM", ortho = False)
+            generate_dems([dem_mosaic_aligned], epsg_code, dem_name = os.path.splitext(os.path.basename(out_dem_aligned_mosaic))[0] +"-trans_source-DEM", ortho = False)
             create_hillshade(out_dem_aligned_mosaic, out_dem_aligned_mosaic_hs)
        
    
