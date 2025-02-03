@@ -29,7 +29,7 @@ def dir_path(string):
 def getparser():
     parser = argparse.ArgumentParser(description='Script to make overlapping pairs based on user defined minimum overlap percentage')
     parser.add_argument('-img_df', '--img_df', help='path to image dataframe', required=True)
-    parser.add_argument('-path_ref_dem_wgs84', '--path_ref_dem_wgs84', help='path to ref dem in geographic coordinates above WGS84 reference ellipsoid', required=True)
+    parser.add_argument('-path_approx_dem_wgs84', '--path_approx_dem_wgs84', help='path to approx. DEM in geographic coordinates above WGS84 reference ellipsoid', required=True)
     parser.add_argument('-percentage', '--percentage', help='percentage_overlap between 0 to 1', required=True)
     parser.add_argument('-min_convergence_angle', '--min_convergence_angle', help='minimum convergence angle between two images', default='0.0')
     parser.add_argument('-outfn','--out_fn',help='Text file containing the overlapping pairs')
@@ -53,7 +53,7 @@ def prep_planet_df(overlap_list):
 
 
 # check if two images intersect by analysing there boundary that was calculated beforehand (img_list stores paths to two images)
-def check_footprint_intersection(img_pair, path_ref_dem_wgs84, min_overlap, min_convergence_angle):
+def check_footprint_intersection(img_pair, path_approx_dem_wgs84, min_overlap, min_convergence_angle):
 
     conv_angle = 0.
 
@@ -99,7 +99,7 @@ def check_footprint_intersection(img_pair, path_ref_dem_wgs84, min_overlap, min_
                 lat=lat, 
                 geotiff_path_1=img_pair[0],
                 geotiff_path_2=img_pair[1],
-                dem_path=path_ref_dem_wgs84)
+                dem_path=path_approx_dem_wgs84)
 
             # output
             print(os.path.basename(img_pair[0]) + "-" + os.path.basename(img_pair[1]) + ", dist: " + str(dist.values[0]) + ", overlap: " + str(perc_intsect) + ", conv_angle: " +  str(conv_angle))
@@ -160,15 +160,15 @@ def main(args):
     n_comb = len(img_combinations)
     perc_overlaps = np.ones(n_comb,dtype=float)*perc_overlap
     min_convergence_angles = np.ones(n_comb,dtype=float)*min_convergence_angle 
-    paths_ref_dem_wgs84 = [args.path_ref_dem_wgs84] * n_comb
+    paths_approx_dem_wgs84 = [args.path_approx_dem_wgs84] * n_comb
  
     # check which shape files intersect and how much (tv[0] = true/false if intersect; tv[1] = percentage)    
     # parallelized
-    tv = p_map(check_footprint_intersection, img_combinations, paths_ref_dem_wgs84, perc_overlaps, min_convergence_angles, num_cpus=4*n_proc)
+    tv = p_map(check_footprint_intersection, img_combinations, paths_approx_dem_wgs84, perc_overlaps, min_convergence_angles, num_cpus=4*n_proc)
 
     #tv = []
     #for img_combi in img_combinations:
-    #    tv.extend(img_intersect(img_combi, args.path_ref_dem_wgs84, perc_overlap, min_convergence_angle))
+    #    tv.extend(img_intersect(img_combi, args.path_approx_dem_wgs84, perc_overlap, min_convergence_angle))
 
     # result to this contains truth value (0 or 1, overlap percentage)
     truth_value = [tvs[0] for tvs in tv]

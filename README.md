@@ -7,7 +7,7 @@ The toolchain includes, among others, routines for stereo pair preselection base
 
 
 ## Purpose
-The pipeline provided is intended to enable geoscientists to generate high-resolution surface models with resolutions of a few meters and thus offers an interesting alternative to commercial systems. Options for assessing the accuracy of the calculated DEMs based on reference DEMs are also integrated. 
+The pipeline provided is intended to enable geoscientists to generate high-resolution surface models with resolutions of a few meters and thus offers an interesting alternative to commercial systems. Options for assessing the accuracy of the calculated DEMs based on approximation DEMs are also integrated. 
 
 
 ## Getting started // Installation // Dependencies
@@ -51,7 +51,7 @@ which are separated into user, expert and debug settings,
 - Debug settings are used to switch off individual process steps for debugging reasons. Expert and debug settings do not necessarily have to be adjusted. 
 
 ```
-usage: planet4stereo.py [-h] --working_dir WORKING_DIR --in_pss_img_dir IN_PSS_IMG_DIR --in_ref_dem IN_REF_DEM [--in_exclusion_mask IN_EXCLUSION_MASK] [--ref_dem_geoid_model REF_DEM_GEOID_MODEL] [--dem_res DEM_RES] [--pss_band PSS_BAND] [--no_ortho] [--elevation_tolerance ELEVATION_TOLERANCE]
+usage: planet4stereo.py [-h] --working_dir WORKING_DIR --in_pss_img_dir IN_PSS_IMG_DIR --in_approx_dem IN_APPROX_DEM [--in_exclusion_mask IN_EXCLUSION_MASK] [--approx_dem_geoid_model APPROX_DEM_GEOID_MODEL] [--dem_res DEM_RES] [--pss_band PSS_BAND] [--no_ortho] [--elevation_tolerance ELEVATION_TOLERANCE]
                         [--min_convergence_angle MIN_CONVERGENCE_ANGLE] [--min_overlap_percent MIN_OVERLAP_PERCENT] [--subpx_kernel SUBPX_KERNEL] [--corr_kernel CORR_KERNEL] [--no_bba] [--no_stereo] [--no_pc_alignment] [--no_dem]
 
 planet4stereo: A small ASP-based pipeline to generate medium-resolution DEMs from multi-temporal Planetscope data
@@ -60,8 +60,8 @@ optional arguments:
   -h, --help            show this help message and exit
   --in_exclusion_mask IN_EXCLUSION_MASK
                         Path to a shapefile masking unstable areas (e.g., glaciers) for point cloud alignment. (default: None)
-  --ref_dem_geoid_model REF_DEM_GEOID_MODEL
-                        Specify a geoid model if the reference DEM uses geoid heights (e.g., EGM96 for SRTM). (default: None)
+  --approx_dem_geoid_model APPROX_DEM_GEOID_MODEL
+                        Specify a geoid model if the approximation DEM uses geoid heights (e.g., EGM96 for SRTM). (default: None)
   --dem_res DEM_RES     Set the output resolution of the DEM (in meters). If not specified, the median GSD of the input images is used. (default: None)
   --pss_band PSS_BAND   Band selection for ASP (1ch or 3ch images). Recommended: NIR (B4) for high contrast in saturated areas (e.g., snow). (default: 4)
   --no_ortho            Disable orthorectification before stereo reconstruction (not recommended). (default: False)
@@ -77,7 +77,7 @@ optional arguments:
                         Correlation kernel size (odd value, 3-9 for SGM or MGM methods). (default: 7)
   --no_bba              Disable bundle block adjustment (BBA) before stereo. (default: False)
   --no_stereo           Disable stereo reconstruction. (default: False)
-  --no_pc_alignment     Disable point cloud alignment to the reference DEM. (default: False)
+  --no_pc_alignment     Disable point cloud alignment to the approximation DEM. (default: False)
   --no_dem              Disable DEM rasterization. (default: False)
 
 required arguments:
@@ -85,8 +85,8 @@ required arguments:
                         Specify the working directory. (default: None)
   --in_pss_img_dir IN_PSS_IMG_DIR
                         Path to the Planetscope scenes directory, e.g., .../psscene4band_basic_analytic_udm2/files/201908_PSS4 (default: None)
-  --in_ref_dem IN_REF_DEM
-                        Path to the reference DEM (e.g., Copernicus Open DEM) in TIF format. (default: None)
+  --in_approx_dem IN_APPROX_DEM
+                        Path to the approximation DEM (e.g., Copernicus Open DEM) in TIF format. (default: None)
 ```
 
 

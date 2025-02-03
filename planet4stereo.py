@@ -71,12 +71,12 @@ def getparser():
     required = parser.add_argument_group('required arguments')
     required.add_argument('--working_dir', help='Specify the working directory.', required=True)
     required.add_argument('--in_pss_img_dir', help='Path to the Planetscope scenes directory, e.g., .../psscene4band_basic_analytic_udm2/files/201908_PSS4', required=True)
-    required.add_argument('--in_ref_dem', help='Path to the reference DEM (e.g., Copernicus Open DEM) in TIF format.', required=True)
+    required.add_argument('--in_approx_dem', help='Path to the approximation DEM (e.g., Copernicus Open DEM) in TIF format.', required=True)
     
     ## OPTIONAL USER SETTINGS ##
      # Optional settings provided by the user to fine-tune the pipeline.
     parser.add_argument('--in_exclusion_mask', help='Path to a shapefile masking unstable areas (e.g., glaciers) for point cloud alignment.', default=None)
-    parser.add_argument('--ref_dem_geoid_model', help='Specify a geoid model if the reference DEM uses geoid heights (e.g., EGM96 for SRTM, EGM2008 for GLO-30).', default=None)
+    parser.add_argument('--approx_dem_geoid_model', help='Specify a geoid model if the approximation DEM uses geoid heights (e.g., EGM96 for SRTM, EGM2008 for GLO-30).', default=None)
    
     ## OPTIONAL EXPERT SETTINGS ##
     # Advanced settings for experts to tweak stereo pipeline processing.
@@ -92,7 +92,7 @@ def getparser():
     # Debugging options for disabling various steps of the pipeline for testing or troubleshooting.
     parser.add_argument('--no_bba', help='Disable bundle block adjustment (BBA) before stereo.', action='store_true')
     parser.add_argument('--no_stereo', help='Disable stereo reconstruction.', action='store_true')
-    parser.add_argument('--no_pc_alignment', help='Disable point cloud alignment to the reference DEM.', action='store_true')
+    parser.add_argument('--no_pc_alignment', help='Disable point cloud alignment to the approximation DEM.', action='store_true')
     parser.add_argument('--no_dem', help='Disable DEM rasterization.', action='store_true')
     
     return parser
@@ -255,20 +255,20 @@ def read_acquisition_params_from_meta(wd_img_dir, path_metadata_xml):
     return sensor_resolution, incidence_angle, azimuth_angle, spacecraft_viewangle, id, center_pos_lat, center_pos_lon, illu_elev, illu_azi, orbit
 
 # BBA function
-def perform_bba(wd_ba_dir, wd_ba_dir_prefix, wd_ref_dem, elevation_tolerance, overlap_stereo_txt, wd_imgs_paths_list, overlap_stereo_pkl):
+def perform_bba(wd_ba_dir, wd_ba_dir_prefix, wd_approx_dem, elevation_tolerance, overlap_stereo_txt, wd_imgs_paths_list, overlap_stereo_pkl):
     """
     Perform Bundle Block Adjustment (BBA) to stabilize the image block from Planetscope Scenes (PSS) images.
 
     BBA refines camera poses using the already good georeferencing of PSS images, with constraints to prevent excessive adjustment.
-    The adjustment is filtered using height limits derived from a reference DEM, constrained by a specified elevation tolerance.
+    The adjustment is filtered using height limits derived from a approximation DEM, constrained by a specified elevation tolerance.
 
     Parameters:
         wd_ba_dir (str): 
             Directory for storing BBA result files.
         wd_ba_dir_prefix (str): 
             Prefix for BBA output files.
-        wd_ref_dem (str): 
-            Path to the reference DEM used to define elevation limits.
+        wd_approx_dem (str): 
+            Path to the approximation DEM used to define elevation limits.
         elevation_tolerance (float): 
             Allowable height deviation from the DEM for camera pose optimization.
         overlap_stereo_txt (str): 
@@ -280,8 +280,8 @@ def perform_bba(wd_ba_dir, wd_ba_dir_prefix, wd_ref_dem, elevation_tolerance, ov
     # Check if BBA has already been performed by searching for the residuals stats file
     if not os.path.exists(os.path.join(wd_ba_dir,'run-final_residuals_stats.txt')):
         
-        # Read the reference DEM to calculate the elevation limits
-        with rasterio.open(wd_ref_dem) as dataset:
+        # Read the approximation DEM to calculate the elevation limits
+        with rasterio.open(wd_approx_dem) as dataset:
             dtm_data = dataset.read(1)
             # Replace invalid elevation values (-32768.0) with NaN
             dtm_data = np.where(dtm_data == -32768.0, np.nan, dtm_data)
@@ -339,7 +339,7 @@ def perform_bba(wd_ba_dir, wd_ba_dir_prefix, wd_ref_dem, elevation_tolerance, ov
 
 
 # Stereo processing function
-def perform_stereo(ortho, wd_imgs_paths_list, wd_ba_dir_prefix, wd_ref_dem, overlap_stereo_pkl, wd_stereo_dir, subpx_kernel, corr_kernel):
+def perform_stereo(ortho, wd_imgs_paths_list, wd_ba_dir_prefix, wd_approx_dem, overlap_stereo_pkl, wd_stereo_dir, subpx_kernel, corr_kernel):
     """
     Perform stereo reconstruction for image pairs, with optional orthorectification.
 
@@ -350,8 +350,8 @@ def perform_stereo(ortho, wd_imgs_paths_list, wd_ba_dir_prefix, wd_ref_dem, over
             List of image file paths to process.
         wd_ba_dir_prefix (str): 
             Prefix for the bundle adjustment (BBA) results.
-        wd_ref_dem (str): 
-            Path to the reference DEM for orthorectification or stereo.
+        wd_approx_dem (str): 
+            Path to the approximation DEM for orthorectification or stereo.
         overlap_stereo_pkl (str): 
             Path to the stereo overlap pickle file (contains stereo pairs).
         wd_stereo_dir (str): 
@@ -374,7 +374,7 @@ def perform_stereo(ortho, wd_imgs_paths_list, wd_ba_dir_prefix, wd_ref_dem, over
             out_img = os.path.splitext(os.path.abspath(img))[0] + '_map.tif'
             if not os.path.exists(out_img):
                 # Run orthorectification with mapproject
-                sub.run_cmd('mapproject', ['-t', 'rpc', '--bundle-adjust-prefix', os.path.abspath(wd_ba_dir_prefix), wd_ref_dem, img, out_img])
+                sub.run_cmd('mapproject', ['-t', 'rpc', '--bundle-adjust-prefix', os.path.abspath(wd_ba_dir_prefix), wd_approx_dem, img, out_img])
 
         # Copy BBA adjustment files and append '_map' suffix to use with orthorectified images     
         bba_adjustment_files = glob.glob(wd_ba_dir_prefix + "*.adjust")
@@ -432,7 +432,7 @@ def perform_stereo(ortho, wd_imgs_paths_list, wd_ba_dir_prefix, wd_ref_dem, over
             if ortho:
                 img1 = os.path.splitext(os.path.abspath(img1))[0] + '_map.tif'
                 img2 = os.path.splitext(os.path.abspath(img2))[0] + '_map.tif'
-                stereo_args = [img1, img2, out, wd_ref_dem]
+                stereo_args = [img1, img2, out, wd_approx_dem]
             else:
                 stereo_args = [img1, img2, out]
 
@@ -486,9 +486,9 @@ def check_aligned_files(pc_list, suffix):
     # Return the list of files that have not yet been aligned
     return pc_list
 
-def align_point_clouds(pc_list, ref_dem):
+def align_point_clouds(pc_list, approx_dem):
     """
-    Aligns a list of point cloud files to a reference DEM using a point-to-plane method.
+    Aligns a list of point cloud files to a approximation DEM using a point-to-plane method.
 
     This function aligns the point clouds using a high-accuracy, point-to-plane algorithm 
     with a maximum displacement threshold. It processes the files in parallel if multiple 
@@ -497,8 +497,8 @@ def align_point_clouds(pc_list, ref_dem):
     Parameters:
         pc_list (list): 
             List of paths to the point cloud files to be aligned.
-        ref_dem (str): 
-            Path to the reference Digital Elevation Model (DEM) file.
+        approx_dem (str): 
+            Path to the approximation DEM file.
     """
 
     # Define alignment options for point cloud alignment
@@ -506,7 +506,7 @@ def align_point_clouds(pc_list, ref_dem):
                      '--max-displacement', '2000.0', # Maximum displacement in meters
                      '--save-transformed-source-points', # Save transformed source points
                      '--highest-accuracy',  # Enable highest accuracy settings
-                     ref_dem] # Path to the reference DEM
+                     approx_dem] # Path to the approximation DEM
 
     # Create a list of jobs for parallel processing, where each point cloud gets aligned
     job_list_align = [pc_align_opts + ['-o', os.path.splitext(pc)[0]] + [pc] for pc in pc_list]
@@ -528,7 +528,7 @@ def generate_dems(pc_list, epsg_code, ortho_suffix = "run-L.tif", dem_name = "ru
         pc_list (list): 
             List of paths to the point cloud files.
         epsg_code (str): 
-            EPSG code for the target coordinate reference system (CRS).
+            EPSG code for the target coordinate approximation system (CRS).
         ortho_suffix (str, optional): 
             Suffix for the orthorectified image, default is 'run-L.tif'.
         dem_name (str, optional): 
@@ -677,13 +677,13 @@ def main(args):
     if len(pss_img_list) < 2:
         sys.exit(f"Only {len(pss_img_list)} images detected, but more than 2 are required. Exiting.")
 
-    in_ref_dem = args.in_ref_dem
-    if not os.path.exists(in_ref_dem):
-        sys.exit(f"Reference DEM {in_ref_dem} not found. Please check the path.")
+    in_approx_dem = args.in_approx_dem
+    if not os.path.exists(in_approx_dem):
+        sys.exit(f"Approximation DEM {in_approx_dem} not found. Please check the path.")
 
     # Optional user settings
-    ref_dem_geoid_model = args.ref_dem_geoid_model
-    ref_dem_geoid = True if ref_dem_geoid_model else False
+    approx_dem_geoid_model = args.approx_dem_geoid_model
+    approx_dem_geoid = True if approx_dem_geoid_model else False
     in_exclusion_mask = args.in_exclusion_mask
     mask_unstable_areas = True if in_exclusion_mask else False
     
@@ -714,11 +714,11 @@ def main(args):
     wd_ba_dir_prefix = os.path.join(wd_ba_dir, 'run')
     wd_stereo_dir = os.path.join(wd, 'final_rpc_stereo')
     wd_stereo_outmosaic_dir = os.path.join(wd_stereo_dir, 'mosaic_dems')
-    wd_ref_dem_dir = os.path.join(wd, 'refdem')
+    wd_approx_dem_dir = os.path.join(wd, 'approx_dem')
     wd_shp_dir = os.path.join(wd, 'shps')
 
     # Define paths to working and output files
-    wd_ref_dem = os.path.join(wd_ref_dem_dir, os.path.basename(in_ref_dem))  # Working copy of in_ref_dem
+    wd_approx_dem = os.path.join(wd_approx_dem_dir, os.path.basename(in_approx_dem))  # Working copy of in_approx_dem
     if args.in_exclusion_mask:
         wd_exclusion_mask = os.path.join(wd_shp_dir, os.path.basename(in_exclusion_mask)) 
         copy_shapefile_from_shp(in_exclusion_mask, wd_shp_dir)  # create working copy of exclusion mask
@@ -738,7 +738,7 @@ def main(args):
     # Create output directories (if they don't exist)
     Path(wd).mkdir(parents=True, exist_ok=True)  # Create output directory
     Path(wd_img_dir).mkdir(parents=True, exist_ok=True)  # Create image directory
-    Path(wd_ref_dem_dir).mkdir(parents=True, exist_ok=True)  # Create reference DEM directory
+    Path(wd_approx_dem_dir).mkdir(parents=True, exist_ok=True)  # Create approx DEM directory
     Path(wd_shp_dir).mkdir(parents=True, exist_ok=True)  # Create shapefile directory
     Path(wd_ba_dir).mkdir(parents=True, exist_ok=True)  # Create BBA directory
     Path(wd_stereo_dir).mkdir(parents=True, exist_ok=True)  # Create stereo directory
@@ -746,11 +746,11 @@ def main(args):
 
 
     # Parameters to determine the registration approach
-    pairwise_pc_alignment = True  # Register individual point clouds to the reference, generate individual DEMs, create DEM mosaic 
-    fused_pc_alignment = False # Generate individual DEMs from point clouds, create DEM mosaic, and align to reference DEM
+    pairwise_pc_alignment = True  # Register individual point clouds to the approximation, generate individual DEMs, create DEM mosaic 
+    fused_pc_alignment = False # Generate individual DEMs from point clouds, create DEM mosaic, and align to approx DEM
 
     if pairwise_pc_alignment and fused_pc_alignment:
-        print("Warning! Either single DEM registration to reference or fused DEM registration to reference is possible. Continue with default 'single_reg'")
+        print("Warning! Either single DEM registration to approximation DEM or fused DEM registration to approximation DEM is possible. Continue with default 'single_reg'")
         fused_pc_alignment = False
     
 
@@ -794,22 +794,22 @@ def main(args):
 
 
     ################################
-    ### REFERENCE DEM PROCESSING ###
+    ### APPROXIMATION DEM PROCESSING ###
     ################################
 
-    # Copy reference DEM to the working directory
-    if not os.path.exists(wd_ref_dem):
-        shutil.copyfile(in_ref_dem, wd_ref_dem)
-    print('Path reference DEM:', wd_ref_dem)
+    # Copy approximation DEM to the working directory
+    if not os.path.exists(wd_approx_dem):
+        shutil.copyfile(in_approx_dem, wd_approx_dem)
+    print('Path approximation DEM:', wd_approx_dem)
 
     # Adjust DEM heights to ellipsoidal heights if necessary
-    if ref_dem_geoid:
-        if not os.path.exists(wd_ref_dem + '-adj.tif'):
-            print('Reference DEM has orthometric heights but ASP requires ellipsoidal heights. Adjusting...')
-            geoid_cmd = ['--geoid', ref_dem_geoid_model, '--reverse-adjustment', wd_ref_dem, '--output-prefix', wd_ref_dem]
+    if approx_dem_geoid:
+        if not os.path.exists(wd_approx_dem + '-adj.tif'):
+            print('Approx. DEM has orthometric heights but ASP requires ellipsoidal heights. Adjusting...')
+            geoid_cmd = ['--geoid', approx_dem_geoid_model, '--reverse-adjustment', wd_approx_dem, '--output-prefix', wd_approx_dem]
             sub.run_cmd('dem_geoid', geoid_cmd)
-        wd_ref_dem = wd_ref_dem + '-adj.tif' # Update reference DEM path
-        print('Path reference DEM (ellip):', wd_ref_dem)
+        wd_approx_dem = wd_approx_dem + '-adj.tif' # Update approximation DEM path
+        print('Path approximation DEM (ellip):', wd_approx_dem)
     
     # Calculate scene overlap (adapted from Bhushan et al., 2021)
     # save list of scene pairs meeting the overlap and convergence angle criteria in 'overlap_full_txt'
@@ -817,7 +817,7 @@ def main(args):
         print("Computing PSS image pairs...")
         cmd_overlap = [
             '-img_df', out_img_pkl,
-            '-path_ref_dem_wgs84', wd_ref_dem,
+            '-path_approx_dem_wgs84', wd_approx_dem,
             '-percentage', str(min_overlap_percent),
             '-min_convergence_angle', str(min_convergence_angle),
             '-outfn', overlap_full_txt
@@ -831,22 +831,22 @@ def main(args):
     epsg_code = 'epsg:4326'
     epsg_code_nr = 4326
     
-    # check if Retrieve CRS from the reference DEM and convert to projected CRS if not equal
-    d = gdal.Open(wd_ref_dem)
+    # check if Retrieve CRS from the approximation DEM and convert to projected CRS if not equal
+    d = gdal.Open(wd_approx_dem)
     proj = osr.SpatialReference(wkt=d.GetProjection())
-    epsg_refdem = proj.GetAttrValue('AUTHORITY', 1)
-    epsg_code_refdem = f'EPSG:{epsg_refdem}'
+    epsg_approx_dem = proj.GetAttrValue('AUTHORITY', 1)
+    epsg_code_approx_dem = f'EPSG:{epsg_approx_dem}'
 
-    if epsg_code.casefold() != epsg_code_refdem.casefold():
-        print ("RefDEM has a different datum than WGS84: ", epsg_code_refdem, ", this requires conversion")
-        if not os.path.exists(wd_ref_dem + '_4326.tif'):
-            # Convert reference DEM to UTM by EPSG code
-            reproject_raster(wd_ref_dem, wd_ref_dem + "_4326.tif", epsg_code)
-        wd_ref_dem = wd_ref_dem + "_4326.tif"
-    print('Path to reference DEM:', wd_ref_dem)
+    if epsg_code.casefold() != epsg_code_approx_dem.casefold():
+        print ("Approximation DEM has a different datum than WGS84: ", epsg_code_approx_dem, ", this requires conversion")
+        if not os.path.exists(wd_approx_dem + '_4326.tif'):
+            # Convert approximation DEM to UTM by EPSG code
+            reproject_raster(wd_approx_dem, wd_approx_dem + "_4326.tif", epsg_code)
+        wd_approx_dem = wd_approx_dem + "_4326.tif"
+    print('Path to approximation DEM:', wd_approx_dem)
 
-    # Apply exclusion mask to the reference DEM
-    wd_ref_dem_masked = os.path.splitext(wd_ref_dem)[0] + "_masked_exclusion.tif"
+    # Apply exclusion mask to the approximation DEM
+    wd_approx_dem_masked = os.path.splitext(wd_approx_dem)[0] + "_masked_exclusion.tif"
     if mask_unstable_areas:
         if not os.path.exists(wd_exclusion_mask):  # Check if mask file exists in working directory
             data = gpd.read_file(in_exclusion_mask)
@@ -860,34 +860,34 @@ def main(args):
             else:
                 shutil.copyfile(in_exclusion_mask, wd_exclusion_mask)
 
-        # Mask reference DEM
-        if not os.path.exists(wd_ref_dem_masked):  # Check if masked DEM already exists
-            print('Clipping reference DEM (removing unstable areas). This may take a while...')
-            rproc.clip_raster_by_shapefile(wd_exclusion_mask, wd_ref_dem, wd_ref_dem_masked, crop=False, invert=True)
+        # Mask approximation DEM
+        if not os.path.exists(wd_approx_dem_masked):  # Check if masked DEM already exists
+            print('Clipping approximation DEM (removing unstable areas). This may take a while...')
+            rproc.clip_raster_by_shapefile(wd_exclusion_mask, wd_approx_dem, wd_approx_dem_masked, crop=False, invert=True)
     
-        print('Path to masked reference DEM:', wd_ref_dem_masked)
+        print('Path to masked approximation DEM:', wd_approx_dem_masked)
 
 
     # Processing Phase
     # 1. BBA
     # 2. Stereo (pair-wise)
     if do_bba:
-        perform_bba(wd_ba_dir, wd_ba_dir_prefix, wd_ref_dem, elevation_tolerance, overlap_stereo_txt, wd_imgs_paths_list, overlap_stereo_pkl)
+        perform_bba(wd_ba_dir, wd_ba_dir_prefix, wd_approx_dem, elevation_tolerance, overlap_stereo_txt, wd_imgs_paths_list, overlap_stereo_pkl)
     
     if do_stereo:
-        perform_stereo(ortho, wd_imgs_paths_list, wd_ba_dir_prefix, wd_ref_dem, overlap_stereo_pkl, wd_stereo_dir, subpx_kernel, corr_kernel)
+        perform_stereo(ortho, wd_imgs_paths_list, wd_ba_dir_prefix, wd_approx_dem, overlap_stereo_pkl, wd_stereo_dir, subpx_kernel, corr_kernel)
 
 
     # Either pairwise of fused point cloud alignment:
-    # Run pairwise point cloud alignment to reference DEM in stable areas to correct shifts of the image block resulting from running BBA without GCPs
+    # Run pairwise point cloud alignment to approximation DEM in stable areas to correct shifts of the image block resulting from running BBA without GCPs
     if pairwise_pc_alignment: 
         if do_pc_alignment:
             # Get list of point clouds and check alignment status
             pc_list = sorted(glob.glob(os.path.join(wd_stereo_dir, '**', 'run-PC.tif'), recursive=True))
             pc_list = check_aligned_files(pc_list, "-trans_source")
             if pc_list:
-                # Use the masked or normal reference DEM
-                align_point_clouds(pc_list, wd_ref_dem_masked if mask_unstable_areas else wd_ref_dem) # returns PC-file
+                # Use the masked or normal approximation DEM
+                align_point_clouds(pc_list, wd_approx_dem_masked if mask_unstable_areas else wd_approx_dem) # returns PC-file
 
         if do_dem:
             # Generate DEMs from aligned point clouds
@@ -903,7 +903,7 @@ def main(args):
             create_hillshade(out_dem_aligned_mosaic, out_dem_aligned_mosaic_hs)
           
 
-    # Run fused point alignment to refrence DEM in stable areas to correct shifts of the image block resulting from running BBA without GCPs
+    # Run fused point alignment to approx. DEM in stable areas to correct shifts of the image block resulting from running BBA without GCPs
     # not recommended, better results are to be expected using pairwise point cloud alignment
     if fused_pc_alignment:
         if do_dem:
@@ -924,7 +924,7 @@ def main(args):
             # Get path of DEM mosaic for alignment
             dem_mosaic_aligned = os.path.splitext(out_dem_aligned_mosaic)[0] + "-trans_source.tif"
             if not os.path.exists(dem_mosaic_aligned):
-                align_point_clouds([out_dem_aligned_mosaic], wd_ref_dem_masked if mask_unstable_areas else wd_ref_dem) # returns PC-file
+                align_point_clouds([out_dem_aligned_mosaic], wd_approx_dem_masked if mask_unstable_areas else wd_approx_dem) # returns PC-file
 
             # Regenerate DEM and hillshade for aligned point cloud
             generate_dems([dem_mosaic_aligned], epsg_code, dem_name = os.path.splitext(os.path.basename(out_dem_aligned_mosaic))[0] +"-trans_source-DEM", ortho = False)
